@@ -1,0 +1,10 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Architecture: LSTM-only
+Subgroup: 5_18
+Global test battery: B0018
+Alpha: 5.0
+MAE: 0.076843
+RMSE: 0.086172
+Best round: 14
+Best validation RMSE: 0.072330

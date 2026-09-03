@@ -1,0 +1,12 @@
+FEDERATED TRAINING CONVERGENCE
+===============================
+Architecture: LSTM-only
+Subgroup: 5_18
+Alpha: 5.0
+Total rounds completed: 19
+Maximum rounds: 50
+Best round: 14
+Best global validation RMSE: 0.072330
+Stopped at round: 19
+Patience: 5
+Stopping reason: Early stopping triggered after 5 rounds without validation improvement.

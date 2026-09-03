@@ -1,0 +1,13 @@
+FEDERATED TRAINING CONVERGENCE
+===============================
+Architecture: CNN-LSTM
+Attention: Not used
+Subgroup: 5_18
+Alpha: 5.0
+Total rounds completed: 25
+Maximum rounds: 50
+Best round: 20
+Best global validation RMSE: 0.078764
+Stopped at round: 25
+Patience: 5
+Stopping reason: Early stopping triggered after 5 rounds without validation improvement.

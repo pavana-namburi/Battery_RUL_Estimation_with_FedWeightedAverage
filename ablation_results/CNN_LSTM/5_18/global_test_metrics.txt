@@ -1,0 +1,11 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Architecture: CNN-LSTM
+Attention: Not used
+Subgroup: 5_18
+Global test battery: B0018
+Alpha: 5.0
+MAE: 0.068586
+RMSE: 0.075978
+Best round: 20
+Best validation RMSE: 0.078764
