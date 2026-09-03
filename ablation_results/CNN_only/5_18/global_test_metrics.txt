@@ -1,0 +1,10 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Architecture: CNN-only
+Subgroup: 5_18
+Global test battery: B0018
+Alpha: 5.0
+MAE: 0.064402
+RMSE: 0.075264
+Best round: 29
+Best validation RMSE: 0.088959
