@@ -1,30 +1,24 @@
 # ============================================================
 # FEDERATED LEARNING TRAINING
-# CNN-LSTM-ATTENTION + FedAdam
+# CNN-LSTM-ATTENTION + FedProx
 #
 # Automatically detects all processed_data_* subgroup folders.
 #
-# FedAdam logic preserved:
+# FedProx logic:
 #
 # 1. Each client starts from the current global model.
-# 2. Each client performs local Adam training.
-# 3. Client models are averaged using STANDARD FedAvg mean.
-# 4. Server computes:
+# 2. Each client performs local training.
+# 3. FedProx adds:
 #
-#       delta = current_global - averaged_client_model
+#       (MU / 2) * ||local_model - global_model||^2
 #
-# 5. FedAdam first and second moments are updated.
-# 6. Server model is updated using FedAdam.
+#    to the local training loss.
 #
-# The additional code only provides:
-# - automatic subgroup discovery
-# - validation/test evaluation
-# - best-model restoration
-# - convergence information
-# - training arrays
-# - local/global metrics
-# - attention weights
-# - output verification
+# 4. Client models are aggregated using STANDARD FedAvg mean.
+#
+# 5. Global validation is performed after every round.
+#
+# 6. Best global model is restored after early stopping.
 #
 # NO absolute Windows paths are used.
 # ============================================================
@@ -77,7 +71,7 @@ DEVICE = torch.device(
 )
 
 print("=" * 70)
-print("FEDERATED LEARNING TRAINING - FedAdam")
+print("FEDERATED LEARNING TRAINING - FedProx")
 print("=" * 70)
 
 print(f"Device: {DEVICE}")
@@ -92,33 +86,27 @@ print("=" * 70)
 
 
 # ============================================================
-# 3. AUTOMATIC PATH DISCOVERY
+# 3. AUTOMATIC SUBGROUP DISCOVERY
 # ============================================================
 #
-# The script does NOT contain:
+# The script searches relative to the Python file location.
 #
-# D:\reproducing_FL
-#
-# or any other absolute path.
-#
-# It searches relative to the location of this Python file.
-#
-# Expected structure can be either:
+# Possible structures:
 #
 # project/
-# ├── FL_training_alpha_analysis.py
-# ├── processed_data/
-# │   ├── processed_data_5_18/
-# │   └── processed_data_25_28/
+# ├── FL_training_fedprox.py
+# ├── processed_data_5_18/
+# └── processed_data_25_28/
 #
 # OR:
 #
 # project/
-# ├── FL_training_alpha_analysis.py
-# ├── processed_data_5_18/
-# └── processed_data_25_28/
+# ├── FL_training_fedprox.py
+# └── processed_data/
+#       ├── processed_data_5_18/
+#       └── processed_data_25_28/
 #
-# The code checks both automatically.
+# Both are supported.
 # ============================================================
 
 
@@ -131,10 +119,6 @@ def discover_subgroup_directories():
 
     candidates = []
 
-    # --------------------------------------------------------
-    # Possible roots
-    # --------------------------------------------------------
-
     possible_roots = [
 
         SCRIPT_DIR,
@@ -146,7 +130,10 @@ def discover_subgroup_directories():
         SCRIPT_DIR.parent / "processed_data"
     ]
 
-    # Remove duplicates while preserving order
+
+    # --------------------------------------------------------
+    # Remove duplicate roots
+    # --------------------------------------------------------
 
     unique_roots = []
 
@@ -160,12 +147,13 @@ def discover_subgroup_directories():
 
 
     # --------------------------------------------------------
-    # Search for processed_data_* directories
+    # Search for processed_data_* folders
     # --------------------------------------------------------
 
     for root in unique_roots:
 
         if not root.exists():
+
             continue
 
         try:
@@ -173,11 +161,10 @@ def discover_subgroup_directories():
             for directory in root.iterdir():
 
                 if not directory.is_dir():
+
                     continue
 
-                name = directory.name.lower()
-
-                if name.startswith(
+                if directory.name.lower().startswith(
                     "processed_data_"
                 ):
 
@@ -191,7 +178,7 @@ def discover_subgroup_directories():
 
 
     # --------------------------------------------------------
-    # Remove duplicates
+    # Remove duplicate directories
     # --------------------------------------------------------
 
     discovered = []
@@ -204,8 +191,16 @@ def discover_subgroup_directories():
 
 
     # --------------------------------------------------------
-    # Validate that directories contain
-    # the expected client files
+    # Validate subgroup folders
+    # --------------------------------------------------------
+    #
+    # Each subgroup must contain:
+    #
+    # client_1_data.npz
+    # client_2_data.npz
+    # client_3_data.npz
+    #
+    # and global validation/test files.
     # --------------------------------------------------------
 
     valid = []
@@ -221,9 +216,23 @@ def discover_subgroup_directories():
             directory / "client_3_data.npz"
         ]
 
-        if all(
-            file.exists()
-            for file in required_client_files
+        required_global_files = [
+
+            directory / "global_val.npz",
+
+            directory / "global_test.npz"
+        ]
+
+        if (
+            all(
+                file.exists()
+                for file in required_client_files
+            )
+            and
+            all(
+                file.exists()
+                for file in required_global_files
+            )
         ):
 
             valid.append(directory)
@@ -243,41 +252,35 @@ DATA_DIRECTORIES = (
 if len(DATA_DIRECTORIES) == 0:
 
     raise FileNotFoundError(
+
         "\nNo valid processed_data_* subgroup "
         "directories were found.\n\n"
+
         "The script searched relative to:\n"
+
         f"{SCRIPT_DIR}\n\n"
+
         "Expected folders such as:\n"
+
         "processed_data_5_18\n"
         "processed_data_25_28\n"
+
         "or those folders inside a processed_data directory."
     )
 
 
-# ------------------------------------------------------------
-# Output root
-# ------------------------------------------------------------
-#
-# Output is created next to the detected data root.
-#
-# Example:
-#
-# project/
-# ├── processed_data_5_18/
-# ├── processed_data_25_28/
-# └── outputs_fedadam/
-#
-# If the data folders are inside processed_data/, output is
-# also placed beside that data root.
-# ------------------------------------------------------------
+# ============================================================
+# 4. OUTPUT ROOT
+# ============================================================
 
-
-PROJECT_ROOT = (
-    DATA_DIRECTORIES[0].parent.parent
+COMMON_DATA_ROOT = (
+    DATA_DIRECTORIES[0].parent
 )
 
+
 OUTPUT_ROOT = (
-    PROJECT_ROOT / "outputs_fedadam"
+    COMMON_DATA_ROOT /
+    "outputs_fedprox"
 )
 
 
@@ -288,7 +291,7 @@ OUTPUT_ROOT.mkdir(
 
 
 # ============================================================
-# 4. CLIENT CONFIGURATION
+# 5. CLIENT CONFIGURATION
 # ============================================================
 
 CLIENTS = [
@@ -300,7 +303,7 @@ CLIENTS = [
 
 
 # ============================================================
-# 5. TRAINING HYPERPARAMETERS
+# 6. TRAINING HYPERPARAMETERS
 # ============================================================
 
 LOCAL_EPOCHS = 5
@@ -315,20 +318,14 @@ PATIENCE = 5
 
 
 # ============================================================
-# 6. FEDADAM PARAMETERS
+# 7. FEDPROX PARAMETER
 # ============================================================
 
-SERVER_LR = 1e-3
-
-BETA1 = 0.9
-
-BETA2 = 0.99
-
-TAU = 1e-3
+MU = 0.01
 
 
 # ============================================================
-# 7. MODEL
+# 8. MODEL
 # ============================================================
 
 class CNNLSTMAttention(nn.Module):
@@ -369,10 +366,8 @@ class CNNLSTMAttention(nn.Module):
         return_attn=False
     ):
 
-        # ----------------------------------------------------
         # Input:
         # [batch, sequence_length, features]
-        # ----------------------------------------------------
 
         x = x.permute(
             0,
@@ -421,7 +416,7 @@ class CNNLSTMAttention(nn.Module):
 
 
 # ============================================================
-# 8. METRIC CALCULATION
+# 9. METRICS
 # ============================================================
 
 def calculate_metrics(
@@ -453,7 +448,7 @@ def calculate_metrics(
 
 
 # ============================================================
-# 9. LOAD NPZ DATA
+# 10. LOAD NPZ
 # ============================================================
 
 def load_npz_data(path):
@@ -473,7 +468,7 @@ def load_npz_data(path):
 
 
 # ============================================================
-# 10. TENSOR CONVERSION
+# 11. TENSOR CONVERSION
 # ============================================================
 
 def to_tensor(x):
@@ -485,7 +480,7 @@ def to_tensor(x):
 
 
 # ============================================================
-# 11. LOCAL TRAINING
+# 12. LOCAL FEDPROX TRAINING
 # ============================================================
 
 def train_local_model(
@@ -495,9 +490,7 @@ def train_local_model(
 ):
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    # This is the same local-training logic as the original
-    # FedAdam code.
+    # Copy global model
     # --------------------------------------------------------
 
     local_model = copy.deepcopy(
@@ -506,12 +499,37 @@ def train_local_model(
 
     local_model.train()
 
+
+    # --------------------------------------------------------
+    # Save global parameters for proximal term
+    # --------------------------------------------------------
+
+    global_params = {
+
+        name:
+        parameter.detach().clone().to(DEVICE)
+
+        for name, parameter
+        in global_model.named_parameters()
+    }
+
+
+    # --------------------------------------------------------
+    # Local optimizer
+    # --------------------------------------------------------
+
     optimizer = optim.Adam(
         local_model.parameters(),
         lr=LEARNING_RATE
     )
 
+
+    # --------------------------------------------------------
+    # Regression loss
+    # --------------------------------------------------------
+
     criterion = nn.L1Loss()
+
 
     X_train = to_tensor(
         X_train
@@ -521,9 +539,15 @@ def train_local_model(
         y_train
     ).reshape(-1)
 
+
     n_samples = len(
         X_train
     )
+
+
+    # ========================================================
+    # LOCAL EPOCHS
+    # ========================================================
 
     for epoch in range(
         LOCAL_EPOCHS
@@ -532,6 +556,7 @@ def train_local_model(
         indices = torch.randperm(
             n_samples
         )
+
 
         for start in range(
             0,
@@ -543,6 +568,7 @@ def train_local_model(
                 start:start + BATCH_SIZE
             ]
 
+
             X_batch = X_train[
                 batch_indices
             ].to(DEVICE)
@@ -551,26 +577,88 @@ def train_local_model(
                 batch_indices
             ].to(DEVICE)
 
-            optimizer.zero_grad()
+
+            # ------------------------------------------------
+            # Prediction
+            # ------------------------------------------------
 
             predictions = local_model(
                 X_batch
             )
 
-            loss = criterion(
+
+            # ------------------------------------------------
+            # Main task loss
+            # ------------------------------------------------
+
+            task_loss = criterion(
                 predictions,
                 y_batch
             )
+
+
+            # =================================================
+            # FEDPROX PROXIMAL TERM
+            # =================================================
+            #
+            # ||local_model - global_model||^2
+            #
+            # The global model remains fixed during this
+            # local update.
+            # =================================================
+
+            prox_loss = torch.tensor(
+                0.0,
+                device=DEVICE
+            )
+
+
+            for name, parameter in (
+                local_model.named_parameters()
+            ):
+
+                prox_loss += torch.sum(
+
+                    (
+                        parameter
+                        -
+                        global_params[name]
+                    ) ** 2
+                )
+
+
+            prox_loss = (
+                MU / 2
+            ) * prox_loss
+
+
+            # ------------------------------------------------
+            # Total FedProx loss
+            # ------------------------------------------------
+
+            loss = (
+                task_loss
+                +
+                prox_loss
+            )
+
+
+            # ------------------------------------------------
+            # Backpropagation
+            # ------------------------------------------------
+
+            optimizer.zero_grad()
 
             loss.backward()
 
             optimizer.step()
 
+
     return local_model
 
 
 # ============================================================
-# 12. MODEL EVALUATION
+# 13. MODEL EVALUATION
 # ============================================================
 
 def evaluate_model(
@@ -590,6 +678,7 @@ def evaluate_model(
     ).reshape(-1)
 
     predictions = []
+
 
     with torch.no_grad():
 
@@ -613,6 +702,7 @@ def evaluate_model(
                 .numpy()
             )
 
+
     if len(predictions) == 0:
 
         raise ValueError(
@@ -620,9 +710,11 @@ def evaluate_model(
             "dataset contains zero samples."
         )
 
+
     predictions = np.concatenate(
         predictions
     )
+
 
     return calculate_metrics(
         y_true,
@@ -631,7 +723,7 @@ def evaluate_model(
 
 
 # ============================================================
-# 13. MODEL PREDICTIONS + ATTENTION
+# 14. PREDICTION + ATTENTION
 # ============================================================
 
 def predict_with_attention(
@@ -649,6 +741,7 @@ def predict_with_attention(
 
     attention_values = []
 
+
     with torch.no_grad():
 
         for start in range(
@@ -661,12 +754,15 @@ def predict_with_attention(
                 start:start + BATCH_SIZE
             ].to(DEVICE)
 
-            batch_predictions, batch_attention = (
-                model(
-                    X_batch,
-                    return_attn=True
-                )
+
+            (
+                batch_predictions,
+                batch_attention
+            ) = model(
+                X_batch,
+                return_attn=True
             )
+
 
             predictions.append(
                 batch_predictions
@@ -680,6 +776,7 @@ def predict_with_attention(
                 .numpy()
             )
 
+
     predictions = np.concatenate(
         predictions
     )
@@ -689,6 +786,7 @@ def predict_with_attention(
         axis=0
     )
 
+
     return (
         predictions,
         attention_values
@@ -696,17 +794,18 @@ def predict_with_attention(
 
 
 # ============================================================
-# 14. STANDARD FEDAVG MEAN
+# 15. STANDARD FEDAVG MEAN
 # ============================================================
 #
-# IMPORTANT:
+# FedProx changes LOCAL TRAINING.
 #
-# FedAdam uses a standard mean of client models before the
-# server-side Adam update.
+# Aggregation remains STANDARD FedAvg:
 #
-# This is NOT FedWeightedAvg.
+# client_1 = 1/3
+# client_2 = 1/3
+# client_3 = 1/3
 #
-# No RMSE-based client weighting is introduced here.
+# No RMSE-based weighting is used.
 # ============================================================
 
 def standard_fedavg_mean(
@@ -720,9 +819,11 @@ def standard_fedavg_mean(
         for model in client_models
     ]
 
+
     global_state = copy.deepcopy(
         state_dicts[0]
     )
+
 
     for key in global_state.keys():
 
@@ -744,11 +845,12 @@ def standard_fedavg_mean(
             dim=0
         )
 
+
     return global_state
 
 
 # ============================================================
-# 15. SAVE TRAINING ARRAYS
+# 16. SAVE TRAINING ARRAYS
 # ============================================================
 
 def save_training_arrays(
@@ -762,9 +864,11 @@ def save_training_arrays(
         output_dir
     )
 
+
     np.save(
 
-        output_dir / "rounds.npy",
+        output_dir /
+        "rounds.npy",
 
         np.asarray(
             rounds,
@@ -772,9 +876,11 @@ def save_training_arrays(
         )
     )
 
+
     np.save(
 
-        output_dir / "client_rmse.npy",
+        output_dir /
+        "client_rmse.npy",
 
         np.asarray(
             client_rmse_history,
@@ -782,9 +888,11 @@ def save_training_arrays(
         )
     )
 
+
     np.save(
 
-        output_dir / "weights.npy",
+        output_dir /
+        "weights.npy",
 
         np.asarray(
             weight_history,
@@ -794,7 +902,7 @@ def save_training_arrays(
 
 
 # ============================================================
-# 16. SAVE CLIENT ATTENTION
+# 17. SAVE ATTENTION
 # ============================================================
 
 def save_client_attention(
@@ -810,6 +918,7 @@ def save_client_attention(
         )
     )
 
+
     np.save(
         output_path,
         attention_values
@@ -817,7 +926,7 @@ def save_client_attention(
 
 
 # ============================================================
-# 17. TRAIN ONE SUBGROUP
+# 18. TRAIN ONE SUBGROUP
 # ============================================================
 
 def train_subgroup(
@@ -828,6 +937,7 @@ def train_subgroup(
     data_dir = Path(
         data_dir
     )
+
 
     # --------------------------------------------------------
     # Output directory
@@ -843,6 +953,7 @@ def train_subgroup(
         exist_ok=True
     )
 
+
     attention_dir = (
         output_dir /
         "attention_weights"
@@ -857,24 +968,28 @@ def train_subgroup(
     print("\n")
     print("=" * 70)
     print(
-        f"TRAINING SUBGROUP: {subgroup_name}"
+        f"TRAINING SUBGROUP: "
+        f"{subgroup_name}"
     )
     print("=" * 70)
 
     print(
-        f"Data directory  : {data_dir}"
+        f"Data directory  : "
+        f"{data_dir}"
     )
 
     print(
-        f"Output directory: {output_dir}"
+        f"Output directory: "
+        f"{output_dir}"
     )
 
 
     # ========================================================
-    # 17.1 LOAD CLIENT DATA
+    # 18.1 LOAD CLIENT DATA
     # ========================================================
 
     client_data = {}
+
 
     for client_id in CLIENTS:
 
@@ -883,14 +998,17 @@ def train_subgroup(
             f"{client_id}_data.npz"
         )
 
+
         print(
             f"\nLoading {client_id}: "
             f"{client_file}"
         )
 
+
         data = load_npz_data(
             client_file
         )
+
 
         required_keys = [
 
@@ -904,14 +1022,17 @@ def train_subgroup(
             "y_test"
         ]
 
+
         for key in required_keys:
 
             if key not in data:
 
                 raise KeyError(
+
                     f"{key} missing from "
                     f"{client_file}"
                 )
+
 
         client_data[client_id] = {
 
@@ -934,6 +1055,7 @@ def train_subgroup(
                 data["y_test"]
         }
 
+
         print(
             f"  Train: "
             f"{data['X_train'].shape}"
@@ -951,7 +1073,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.2 LOAD GLOBAL VALIDATION DATA
+    # 18.2 GLOBAL VALIDATION
     # ========================================================
 
     global_val_path = (
@@ -959,14 +1081,19 @@ def train_subgroup(
         "global_val.npz"
     )
 
+
     print(
         f"\nLoading global validation:\n"
         f"{global_val_path}"
     )
 
-    global_val_data = load_npz_data(
-        global_val_path
+
+    global_val_data = (
+        load_npz_data(
+            global_val_path
+        )
     )
+
 
     if "X" not in global_val_data:
 
@@ -974,11 +1101,13 @@ def train_subgroup(
             "X missing from global_val.npz"
         )
 
+
     if "y" not in global_val_data:
 
         raise KeyError(
             "y missing from global_val.npz"
         )
+
 
     X_global_val = (
         global_val_data["X"]
@@ -988,6 +1117,7 @@ def train_subgroup(
         global_val_data["y"]
     )
 
+
     print(
         f"Global validation: "
         f"{X_global_val.shape}"
@@ -995,7 +1125,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.3 LOAD GLOBAL TEST DATA
+    # 18.3 GLOBAL TEST
     # ========================================================
 
     global_test_path = (
@@ -1003,14 +1133,19 @@ def train_subgroup(
         "global_test.npz"
     )
 
+
     print(
         f"\nLoading global test:\n"
         f"{global_test_path}"
     )
 
-    global_test_data = load_npz_data(
-        global_test_path
+
+    global_test_data = (
+        load_npz_data(
+            global_test_path
+        )
     )
+
 
     if "X" not in global_test_data:
 
@@ -1018,11 +1153,13 @@ def train_subgroup(
             "X missing from global_test.npz"
         )
 
+
     if "y" not in global_test_data:
 
         raise KeyError(
             "y missing from global_test.npz"
         )
+
 
     X_global_test = (
         global_test_data["X"]
@@ -1032,6 +1169,7 @@ def train_subgroup(
         global_test_data["y"]
     )
 
+
     print(
         f"Global test: "
         f"{X_global_test.shape}"
@@ -1039,7 +1177,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.4 INITIAL GLOBAL MODEL
+    # 18.4 INITIAL GLOBAL MODEL
     # ========================================================
 
     global_model = (
@@ -1049,35 +1187,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.5 FEDADAM MOMENT STATES
-    # ========================================================
-    #
-    # These are reset independently for each subgroup.
-    #
-    # This preserves the original FedAdam logic.
-    # ========================================================
-
-    m = {}
-
-    v = {}
-
-    for key, parameter in (
-        global_model.state_dict().items()
-    ):
-
-        m[key] = torch.zeros_like(
-            parameter,
-            dtype=torch.float32
-        )
-
-        v[key] = torch.zeros_like(
-            parameter,
-            dtype=torch.float32
-        )
-
-
-    # ========================================================
-    # 17.6 TRAINING HISTORY
+    # 18.5 TRAINING HISTORY
     # ========================================================
 
     rounds = []
@@ -1090,7 +1200,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.7 EARLY STOPPING
+    # 18.6 EARLY STOPPING
     # ========================================================
 
     best_global_rmse = float(
@@ -1107,13 +1217,14 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.8 FEDADAM TRAINING
+    # 18.7 FEDPROX TRAINING
     # ========================================================
 
     for round_number in range(
         1,
         MAX_ROUNDS + 1
     ):
+
 
         print("\n")
         print("-" * 70)
@@ -1126,28 +1237,27 @@ def train_subgroup(
         print("-" * 70)
 
 
-        # ----------------------------------------------------
-        # LOCAL MODELS
-        # ----------------------------------------------------
-
         client_models = []
 
         client_rmses = []
 
 
-        # ----------------------------------------------------
+        # ====================================================
         # LOCAL TRAINING
-        # ----------------------------------------------------
+        # ====================================================
 
         for client_id in CLIENTS:
 
             print(
-                f"\nTraining {client_id}..."
+                f"\nTraining "
+                f"{client_id}..."
             )
+
 
             data = client_data[
                 client_id
             ]
+
 
             local_model = (
                 train_local_model(
@@ -1161,9 +1271,8 @@ def train_subgroup(
             # ------------------------------------------------
             # Local validation
             #
-            # This is ONLY recorded for analysis.
-            #
-            # It does NOT determine FedAdam aggregation.
+            # Used only for recording.
+            # It does NOT affect aggregation.
             # ------------------------------------------------
 
             val_mae, val_rmse = (
@@ -1173,6 +1282,7 @@ def train_subgroup(
                     data["y_val"]
                 )
             )
+
 
             print(
                 f"{client_id} validation "
@@ -1184,6 +1294,7 @@ def train_subgroup(
                 f"RMSE = {val_rmse:.6f}"
             )
 
+
             client_models.append(
                 local_model
             )
@@ -1194,29 +1305,13 @@ def train_subgroup(
 
 
         # ====================================================
-        # STANDARD FEDAVG MEAN
-        # ====================================================
-        #
-        # IMPORTANT:
-        #
-        # FedAdam first calculates an ordinary mean of all
-        # client models.
-        #
-        # Therefore the coefficients are:
-        #
-        # client_1 = 1/3
-        # client_2 = 1/3
-        # client_3 = 1/3
-        #
-        # These are saved in weights.npy only to document the
-        # actual aggregation coefficients.
-        #
-        # No RMSE weighting is performed.
+        # STANDARD FEDAVG WEIGHTS
         # ====================================================
 
         num_clients = len(
             client_models
         )
+
 
         aggregation_weights = (
             np.ones(
@@ -1227,10 +1322,12 @@ def train_subgroup(
             num_clients
         )
 
+
         print(
-            "\nFedAdam client averaging "
-            "(standard mean):"
+            "\nFedProx client aggregation "
+            "(standard FedAvg mean):"
         )
+
 
         for i, client_id in enumerate(
             CLIENTS
@@ -1243,16 +1340,18 @@ def train_subgroup(
 
 
         # ====================================================
-        # STORE HISTORY
+        # STORE ROUND HISTORY
         # ====================================================
 
         rounds.append(
             round_number
         )
 
+
         client_rmse_history.append(
             client_rmses
         )
+
 
         weight_history.append(
             aggregation_weights
@@ -1260,7 +1359,7 @@ def train_subgroup(
 
 
         # ====================================================
-        # STANDARD FEDAVG MEAN
+        # STANDARD FEDAVG AGGREGATION
         # ====================================================
 
         avg_state = (
@@ -1270,96 +1369,8 @@ def train_subgroup(
         )
 
 
-        # ====================================================
-        # FEDADAM SERVER UPDATE
-        # ====================================================
-        #
-        # ORIGINAL LOGIC PRESERVED:
-        #
-        # delta =
-        #     current_global - avg_state
-        #
-        # m =
-        #     BETA1*m + (1-BETA1)*delta
-        #
-        # v =
-        #     BETA2*v + (1-BETA2)*(delta^2)
-        #
-        # new_global =
-        #     current_global
-        #     - SERVER_LR*m/(sqrt(v)+TAU)
-        # ====================================================
-
-        current_global = (
-            global_model.state_dict()
-        )
-
-        new_state = copy.deepcopy(
-            current_global
-        )
-
-        for key in current_global.keys():
-
-            delta = (
-                current_global[key].float()
-                -
-                avg_state[key]
-            )
-
-            # ------------------------------------------------
-            # First moment
-            # ------------------------------------------------
-
-            m[key] = (
-
-                BETA1 * m[key]
-
-                +
-                (1 - BETA1) * delta
-            )
-
-
-            # ------------------------------------------------
-            # Second moment
-            # ------------------------------------------------
-
-            v[key] = (
-
-                BETA2 * v[key]
-
-                +
-                (1 - BETA2)
-                * (delta ** 2)
-            )
-
-
-            # ------------------------------------------------
-            # Adam server update
-            # ------------------------------------------------
-
-            new_state[key] = (
-
-                current_global[key]
-
-                -
-                SERVER_LR
-
-                *
-                m[key]
-
-                /
-                (
-                    torch.sqrt(
-                        v[key]
-                    )
-                    +
-                    TAU
-                )
-            )
-
-
         global_model.load_state_dict(
-            new_state
+            avg_state
         )
 
 
@@ -1374,6 +1385,7 @@ def train_subgroup(
                 y_global_val
             )
         )
+
 
         print(
             "\nGlobal validation:"
@@ -1391,7 +1403,7 @@ def train_subgroup(
 
 
         # ====================================================
-        # STORE GLOBAL VALIDATION HISTORY
+        # SAVE HISTORY
         # ====================================================
 
         history_row = {
@@ -1406,9 +1418,6 @@ def train_subgroup(
                 global_val_rmse
         }
 
-
-        # Add client validation RMSE dynamically
-        # rather than hardcoding client names.
 
         for i, client_id in enumerate(
             CLIENTS
@@ -1466,14 +1475,17 @@ def train_subgroup(
 
             patience_counter = 0
 
+
             print(
-                "\n  *** New best global "
-                "model ***"
+                "\n  *** New best "
+                "global model ***"
             )
+
 
         else:
 
             patience_counter += 1
+
 
             print(
                 f"\n  No improvement. "
@@ -1481,6 +1493,7 @@ def train_subgroup(
                 f"{patience_counter}/"
                 f"{PATIENCE}"
             )
+
 
         if patience_counter >= PATIENCE:
 
@@ -1496,7 +1509,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.9 RESTORE BEST GLOBAL MODEL
+    # 18.8 RESTORE BEST MODEL
     # ========================================================
 
     if best_global_state is None:
@@ -1505,9 +1518,11 @@ def train_subgroup(
             "No best global model was obtained."
         )
 
+
     global_model.load_state_dict(
         best_global_state
     )
+
 
     global_model = global_model.to(
         DEVICE
@@ -1515,7 +1530,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.10 SAVE GLOBAL MODEL
+    # 18.9 SAVE GLOBAL MODEL
     # ========================================================
 
     global_model_path = (
@@ -1523,10 +1538,12 @@ def train_subgroup(
         "global_model.pt"
     )
 
+
     torch.save(
         global_model.state_dict(),
         global_model_path
     )
+
 
     print(
         f"\nBest global model saved:\n"
@@ -1535,17 +1552,19 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.11 SAVE GLOBAL VALIDATION HISTORY
+    # 18.10 SAVE VALIDATION HISTORY
     # ========================================================
 
     global_val_df = pd.DataFrame(
         global_val_history
     )
 
+
     global_val_path = (
         output_dir /
         "global_val_history.csv"
     )
+
 
     global_val_df.to_csv(
         global_val_path,
@@ -1554,7 +1573,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.12 FINAL GLOBAL TEST
+    # 18.11 FINAL GLOBAL TEST
     # ========================================================
 
     global_test_mae, global_test_rmse = (
@@ -1565,10 +1584,12 @@ def train_subgroup(
         )
     )
 
+
     print("\n")
     print("=" * 70)
     print("FINAL GLOBAL TEST")
     print("=" * 70)
+
 
     print(
         f"Subgroup: "
@@ -1587,13 +1608,14 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.13 SAVE GLOBAL TEST METRICS
+    # 18.12 SAVE GLOBAL TEST METRICS
     # ========================================================
 
     global_metrics_path = (
         output_dir /
         "global_test_metrics.txt"
     )
+
 
     with open(
         global_metrics_path,
@@ -1638,21 +1660,25 @@ def train_subgroup(
             f"{best_global_rmse:.6f}\n"
         )
 
+        f.write(
+            f"FedProx MU: "
+            f"{MU}\n"
+        )
+
 
     # ========================================================
-    # 17.14 FINAL LOCAL CLIENT TEST
-    #
-    # Best global model is evaluated on every client's local
-    # test set.
+    # 18.13 LOCAL CLIENT TEST
     # ========================================================
 
     local_test_results = []
+
 
     for client_id in CLIENTS:
 
         data = client_data[
             client_id
         ]
+
 
         test_mae, test_rmse = (
             evaluate_model(
@@ -1661,6 +1687,7 @@ def train_subgroup(
                 data["y_test"]
             )
         )
+
 
         print(
             f"\n{client_id} local test:"
@@ -1676,6 +1703,7 @@ def train_subgroup(
             f"{test_rmse:.6f}"
         )
 
+
         local_test_results.append({
 
             "client":
@@ -1690,17 +1718,19 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.15 SAVE LOCAL TEST METRICS
+    # 18.14 SAVE LOCAL TEST METRICS
     # ========================================================
 
     local_test_df = pd.DataFrame(
         local_test_results
     )
 
+
     local_test_path = (
         output_dir /
         "local_test_metrics.csv"
     )
+
 
     local_test_df.to_csv(
         local_test_path,
@@ -1709,7 +1739,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.16 SAVE CLIENT ATTENTION WEIGHTS
+    # 18.15 SAVE ATTENTION WEIGHTS
     # ========================================================
 
     print("\n")
@@ -1717,16 +1747,19 @@ def train_subgroup(
     print("SAVING CLIENT ATTENTION WEIGHTS")
     print("=" * 70)
 
+
     for client_id in CLIENTS:
 
         data = client_data[
             client_id
         ]
 
+
         attention_path = (
             attention_dir /
             f"{client_id}_attention.npy"
         )
+
 
         save_client_attention(
 
@@ -1737,6 +1770,7 @@ def train_subgroup(
             attention_path
         )
 
+
         print(
             f"{client_id}: "
             f"{attention_path}"
@@ -1744,13 +1778,14 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.17 SAVE CONVERGENCE INFORMATION
+    # 18.16 CONVERGENCE INFORMATION
     # ========================================================
 
     convergence_path = (
         output_dir /
         "convergence.txt"
     )
+
 
     total_rounds = len(
         rounds
@@ -1793,7 +1828,12 @@ def train_subgroup(
         )
 
         f.write(
-            "Algorithm: FedAdam\n"
+            "Algorithm: FedProx\n"
+        )
+
+        f.write(
+            f"FedProx MU: "
+            f"{MU}\n"
         )
 
         f.write(
@@ -1827,23 +1867,8 @@ def train_subgroup(
         )
 
         f.write(
-            f"Server learning rate: "
-            f"{SERVER_LR}\n"
-        )
-
-        f.write(
-            f"Beta1: "
-            f"{BETA1}\n"
-        )
-
-        f.write(
-            f"Beta2: "
-            f"{BETA2}\n"
-        )
-
-        f.write(
-            f"Tau: "
-            f"{TAU}\n"
+            f"Learning rate: "
+            f"{LEARNING_RATE}\n"
         )
 
         f.write(
@@ -1853,7 +1878,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.18 FINAL ARRAY SAVE
+    # 18.17 FINAL ARRAY SAVE
     # ========================================================
 
     save_training_arrays(
@@ -1869,13 +1894,14 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.19 VERIFY OUTPUT FILES
+    # 18.18 VERIFY OUTPUT FILES
     # ========================================================
 
     print("\n")
     print("=" * 70)
     print(
-        f"SUBGROUP {subgroup_name} COMPLETE"
+        f"SUBGROUP "
+        f"{subgroup_name} COMPLETE"
     )
     print("=" * 70)
 
@@ -1907,24 +1933,29 @@ def train_subgroup(
             filename
         )
 
+
         status = (
+
             "OK"
             if path.exists()
             else "MISSING"
         )
 
+
         print(
-            f"{filename}: {status}"
+            f"{filename}: "
+            f"{status}"
         )
 
 
     # ========================================================
-    # 17.20 VERIFY ATTENTION FILES
+    # 18.19 VERIFY ATTENTION FILES
     # ========================================================
 
     print(
         "\nAttention files:"
     )
+
 
     for client_id in CLIENTS:
 
@@ -1932,24 +1963,29 @@ def train_subgroup(
             f"{client_id}_attention.npy"
         )
 
+
         path = (
             attention_dir /
             filename
         )
 
+
         status = (
+
             "OK"
             if path.exists()
             else "MISSING"
         )
 
+
         print(
-            f"{filename}: {status}"
+            f"{filename}: "
+            f"{status}"
         )
 
 
     # ========================================================
-    # 17.21 CHECK ARRAY SHAPES
+    # 18.20 ARRAY SHAPES
     # ========================================================
 
     rounds_array = np.load(
@@ -1957,10 +1993,12 @@ def train_subgroup(
         "rounds.npy"
     )
 
+
     rmse_array = np.load(
         output_dir /
         "client_rmse.npy"
     )
+
 
     weights_array = np.load(
         output_dir /
@@ -1972,15 +2010,18 @@ def train_subgroup(
         "\nSaved array shapes:"
     )
 
+
     print(
         f"rounds.npy      : "
         f"{rounds_array.shape}"
     )
 
+
     print(
         f"client_rmse.npy : "
         f"{rmse_array.shape}"
     )
+
 
     print(
         f"weights.npy     : "
@@ -1989,7 +2030,7 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.22 WEIGHT SANITY CHECK
+    # 18.21 WEIGHT SANITY CHECK
     # ========================================================
 
     if len(weights_array) > 0:
@@ -1999,11 +2040,13 @@ def train_subgroup(
             axis=1
         )
 
+
         print(
             f"\nWeight sum range: "
             f"{weight_sums.min():.6f} - "
             f"{weight_sums.max():.6f}"
         )
+
 
         if np.allclose(
             weight_sums,
@@ -2023,13 +2066,13 @@ def train_subgroup(
 
 
     # ========================================================
-    # 17.23 FINAL OUTPUT SUMMARY
+    # 18.22 FINAL OUTPUT SUMMARY
     # ========================================================
 
-    print("\n")
     print(
-        "Output files:"
+        "\nOutput files:"
     )
+
 
     for path in sorted(
         output_dir.rglob("*")
@@ -2038,29 +2081,35 @@ def train_subgroup(
         if path.is_file():
 
             print(
-                f"  {path.relative_to(output_dir)}"
+                f"  "
+                f"{path.relative_to(output_dir)}"
             )
+
 
     print("\n")
 
 
 # ============================================================
-# 18. MAIN
+# 19. MAIN
 # ============================================================
 
 def main():
 
     print("\n")
     print("#" * 70)
+
     print(
-        "# STARTING ALL FEDADAM "
+        "# STARTING ALL FEDPROX "
         "FEDERATED LEARNING EXPERIMENTS"
     )
+
     print("#" * 70)
+
 
     print(
         "\nDetected subgroup directories:"
     )
+
 
     for directory in DATA_DIRECTORIES:
 
@@ -2079,17 +2128,11 @@ def main():
             data_directory.name
         )
 
-        # ----------------------------------------------------
-        # processed_data_5_18
-        #              ↓
-        # subgroup_name = 5_18
-        #
-        # processed_data_25_28
-        #              ↓
-        # subgroup_name = 25_28
-        # ----------------------------------------------------
 
-        prefix = "processed_data_"
+        prefix = (
+            "processed_data_"
+        )
+
 
         if directory_name.startswith(
             prefix
@@ -2117,15 +2160,18 @@ def main():
 
 
     # ========================================================
-    # ALL COMPLETE
+    # COMPLETE
     # ========================================================
 
     print("\n")
     print("#" * 70)
+
     print(
-        "# ALL SUBGROUPS COMPLETED"
+        "# ALL FEDPROX SUBGROUPS COMPLETED"
     )
+
     print("#" * 70)
+
 
     print(
         f"\nOutputs saved under:\n"
@@ -2134,7 +2180,7 @@ def main():
 
 
 # ============================================================
-# 19. RUN
+# 20. RUN
 # ============================================================
 
 if __name__ == "__main__":
