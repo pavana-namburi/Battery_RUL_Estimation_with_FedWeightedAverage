@@ -1,0 +1,13 @@
+FEDERATED TRAINING CONVERGENCE
+===============================
+Subgroup: 25_28
+Algorithm: FedProx
+FedProx MU: 0.01
+Total rounds completed: 18
+Maximum rounds: 50
+Best round: 13
+Best global validation RMSE: 0.415626
+Stopped at round: 18
+Patience: 5
+Learning rate: 0.0001
+Stopping reason: Early stopping triggered after 5 rounds without validation improvement.

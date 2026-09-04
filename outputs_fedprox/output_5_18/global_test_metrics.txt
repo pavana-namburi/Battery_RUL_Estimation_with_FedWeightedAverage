@@ -1,0 +1,9 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Subgroup: 5_18
+Global test samples: 34837
+MAE: 0.071114
+RMSE: 0.084746
+Best round: 15
+Best validation RMSE: 0.091287
+FedProx MU: 0.01

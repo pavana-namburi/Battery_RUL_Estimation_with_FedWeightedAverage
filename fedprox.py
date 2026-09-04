@@ -273,22 +273,19 @@ if len(DATA_DIRECTORIES) == 0:
 # 4. OUTPUT ROOT
 # ============================================================
 
-COMMON_DATA_ROOT = (
-    DATA_DIRECTORIES[0].parent
+PROJECT_ROOT = (
+    DATA_DIRECTORIES[0].parent.parent
 )
-
 
 OUTPUT_ROOT = (
-    COMMON_DATA_ROOT /
+    PROJECT_ROOT /
     "outputs_fedprox"
 )
-
 
 OUTPUT_ROOT.mkdir(
     parents=True,
     exist_ok=True
 )
-
 
 # ============================================================
 # 5. CLIENT CONFIGURATION
