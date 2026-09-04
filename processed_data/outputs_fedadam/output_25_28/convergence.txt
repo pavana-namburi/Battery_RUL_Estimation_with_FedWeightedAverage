@@ -1,0 +1,15 @@
+FEDERATED TRAINING CONVERGENCE
+===============================
+Subgroup: 25_28
+Algorithm: FedAdam
+Total rounds completed: 11
+Maximum rounds: 50
+Best round: 6
+Best global validation RMSE: 0.053642
+Stopped at round: 11
+Patience: 5
+Server learning rate: 0.001
+Beta1: 0.9
+Beta2: 0.99
+Tau: 0.001
+Stopping reason: Early stopping triggered after 5 rounds without validation improvement.

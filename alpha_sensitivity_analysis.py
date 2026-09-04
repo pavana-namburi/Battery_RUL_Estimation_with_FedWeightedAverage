@@ -15,7 +15,9 @@
 #     5_18
 #     25_28
 #
-# The existing FL_training.py is reused.
+# Training script:
+#
+#     FL_training_alpha_analysis.py
 #
 # No absolute machine-specific paths are used.
 #
@@ -37,17 +39,18 @@ import pandas as pd
 # 1. REPOSITORY ROOT
 # ============================================================
 
-# This script is expected to be in the repository root:
+# This script should be located in the repository root:
 #
 # reproducing_FL/
-#     FL_training_alpha_analysis.py
-#     alpha_sensitivity_analysis.py
+# ├── alpha_sensitivity_analysis.py
+# ├── FL_training_alpha_analysis.py
+# ├── processed_data/
+# ├── outputs/
+# └── ...
 #
-# Therefore this automatically identifies the repository root.
+# Therefore no absolute machine-specific path is required.
 
-BASE_DIR = Path(
-    __file__
-).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent
 
 
 # ============================================================
@@ -55,8 +58,7 @@ BASE_DIR = Path(
 # ============================================================
 
 TRAINING_SCRIPT = (
-    BASE_DIR
-    / "FL_training_alpha_analysis.py"
+    BASE_DIR / "FL_training_alpha_analysis.py"
 )
 
 
@@ -65,8 +67,7 @@ TRAINING_SCRIPT = (
 # ============================================================
 
 SENSITIVITY_ROOT = (
-    BASE_DIR
-    / "alpha_sensitivity_analysis"
+    BASE_DIR / "alpha_sensitivity_analysis"
 )
 
 
@@ -75,15 +76,10 @@ SENSITIVITY_ROOT = (
 #
 # IMPORTANT:
 #
-# Alpha = 5.0 is NOT included.
+# Alpha = 5.0 is NOT included because the original
+# FedWeightedAvg experiment already uses alpha = 5.0.
 #
-# Alpha = 5.0 has already been executed through
-# FL_training.py and those results are stored under:
-#
-#     outputs/output_5_18
-#     outputs/output_25_28
-#
-# They are not touched by this script.
+# Existing alpha = 5.0 results are NOT touched.
 # ============================================================
 
 ALPHAS = [
@@ -113,13 +109,12 @@ def check_training_script():
     if not TRAINING_SCRIPT.exists():
 
         raise FileNotFoundError(
-
-            "\nFL_training.py was not found.\n"
+            "\nFL_training_alpha_analysis.py was not found.\n"
             f"Expected location:\n"
             f"{TRAINING_SCRIPT}\n\n"
-
-            "Make sure alpha_sensitivity_analysis.py "
-            "is placed in the repository root."
+            "Make sure alpha_sensitivity_analysis.py and "
+            "FL_training_alpha_analysis.py are in the "
+            "repository root."
         )
 
 
@@ -140,26 +135,21 @@ def create_sensitivity_root():
 #
 # SAFETY RULE:
 #
-# If the directory does not exist:
+# If directory does not exist:
 #     -> create it
+#
+# If directory exists and is empty:
 #     -> safe to run
 #
-# If it exists and is empty:
-#     -> safe to run
-#
-# If it exists and contains ANYTHING:
+# If directory exists and contains anything:
 #     -> refuse to run
-#     -> do NOT delete anything
-#     -> do NOT overwrite anything
+#     -> never delete
+#     -> never overwrite
 # ============================================================
 
-def check_output_directory(
-    output_dir
-):
+def check_output_directory(output_dir):
 
-    output_dir = Path(
-        output_dir
-    )
+    output_dir = Path(output_dir)
 
     if output_dir.exists():
 
@@ -171,15 +161,12 @@ def check_output_directory(
 
             print("\n")
             print("!" * 70)
+            print("REFUSING TO RUN EXPERIMENT")
+            print("!" * 70)
 
             print(
-                "REFUSING TO RUN EXPERIMENT"
-            )
-
-            print(
-                f"Output directory already contains "
-                f"files/folders:\n"
-                f"{output_dir}"
+                f"\nOutput directory already contains "
+                f"files/folders:\n{output_dir}"
             )
 
             print(
@@ -205,26 +192,17 @@ def check_output_directory(
 # 9. VERIFY OUTPUTS
 # ============================================================
 
-def verify_outputs(
-    output_dir
-):
+def verify_outputs(output_dir):
 
     expected_files = [
 
         "client_rmse.npy",
-
         "convergence.txt",
-
         "global_model.pt",
-
         "global_test_metrics.txt",
-
         "global_val_history.csv",
-
         "local_test_metrics.csv",
-
         "rounds.npy",
-
         "weights.npy"
     ]
 
@@ -232,11 +210,7 @@ def verify_outputs(
 
     for filename in expected_files:
 
-        path = (
-            output_dir
-            /
-            filename
-        )
+        path = output_dir / filename
 
         if not path.exists():
 
@@ -246,17 +220,13 @@ def verify_outputs(
 
 
     attention_dir = (
-        output_dir
-        /
-        "attention_weights"
+        output_dir / "attention_weights"
     )
 
     expected_attention = [
 
         "client_1_attention.npy",
-
         "client_2_attention.npy",
-
         "client_3_attention.npy"
     ]
 
@@ -271,9 +241,7 @@ def verify_outputs(
         for filename in expected_attention:
 
             path = (
-                attention_dir
-                /
-                filename
+                attention_dir / filename
             )
 
             if not path.exists():
@@ -287,14 +255,10 @@ def verify_outputs(
 
         print("\n")
         print("!" * 70)
+        print("OUTPUT VERIFICATION FAILED")
+        print("!" * 70)
 
-        print(
-            "OUTPUT VERIFICATION FAILED"
-        )
-
-        print(
-            "Missing files:"
-        )
+        print("\nMissing files:")
 
         for filename in missing_files:
 
@@ -314,19 +278,15 @@ def verify_outputs(
 # 10. READ RESULTS
 # ============================================================
 
-def read_results(
-    output_dir
-):
+def read_results(output_dir):
 
     metrics_path = (
-        output_dir
-        /
+        output_dir /
         "global_test_metrics.txt"
     )
 
     convergence_path = (
-        output_dir
-        /
+        output_dir /
         "convergence.txt"
     )
 
@@ -347,9 +307,7 @@ def read_results(
 
             line = line.strip()
 
-            if line.startswith(
-                "MAE:"
-            ):
+            if line.startswith("MAE:"):
 
                 mae = float(
                     line.split(
@@ -358,9 +316,7 @@ def read_results(
                     )[1].strip()
                 )
 
-            elif line.startswith(
-                "RMSE:"
-            ):
+            elif line.startswith("RMSE:"):
 
                 rmse = float(
                     line.split(
@@ -371,7 +327,7 @@ def read_results(
 
 
     # --------------------------------------------------------
-    # Read number of completed rounds
+    # Read completed rounds
     # --------------------------------------------------------
 
     total_rounds = None
@@ -455,7 +411,7 @@ def run_experiment(
 
 
     # --------------------------------------------------------
-    # SAFETY CHECK
+    # Safety check
     # --------------------------------------------------------
 
     if not check_output_directory(
@@ -473,13 +429,14 @@ def run_experiment(
 
     # --------------------------------------------------------
     # Environment
+    #
+    # These values are passed to
+    # FL_training_alpha_analysis.py.
     # --------------------------------------------------------
 
     env = os.environ.copy()
 
-    env["ALPHA"] = str(
-        alpha
-    )
+    env["ALPHA"] = str(alpha)
 
     env["OUTPUT_ROOT"] = str(
         output_dir
@@ -499,25 +456,33 @@ def run_experiment(
     )
 
     print(
-        f"  ALPHA = {alpha}"
+        f"  Training script     = "
+        f"{TRAINING_SCRIPT}"
     )
 
     print(
-        f"  SUBGROUP_FILTER = "
+        f"  ALPHA               = "
+        f"{alpha}"
+    )
+
+    print(
+        f"  SUBGROUP_FILTER     = "
         f"{subgroup_name}"
     )
 
     print(
-        f"  OUTPUT_ROOT = "
+        f"  OUTPUT_ROOT         = "
         f"{output_dir}"
     )
 
 
     # --------------------------------------------------------
-    # Run FL_training.py
+    # Run training
     #
-    # sys.executable ensures the same Python interpreter/
-    # environment is used.
+    # sys.executable ensures the same Python environment
+    # is used.
+    #
+    # cwd is the repository root.
     # --------------------------------------------------------
 
     result = subprocess.run(
@@ -545,10 +510,8 @@ def run_experiment(
 
         print("\n")
         print("!" * 70)
-
-        print(
-            "TRAINING FAILED"
-        )
+        print("TRAINING FAILED")
+        print("!" * 70)
 
         print(
             f"Subgroup : {subgroup_name}"
@@ -600,10 +563,8 @@ def run_experiment(
 
     print("\n")
     print("-" * 70)
-
-    print(
-        f"RESULTS"
-    )
+    print("RESULTS")
+    print("-" * 70)
 
     print(
         f"Subgroup : {subgroup_name}"
@@ -662,16 +623,12 @@ def main():
 
     print("\n")
     print("#" * 70)
-
-    print(
-        "# ALPHA SENSITIVITY ANALYSIS"
-    )
-
+    print("# ALPHA SENSITIVITY ANALYSIS")
     print("#" * 70)
 
 
     # --------------------------------------------------------
-    # Show configuration
+    # Display configuration
     # --------------------------------------------------------
 
     print(
@@ -704,12 +661,12 @@ def main():
     )
 
     print(
-        "The existing alpha=5.0 results remain untouched."
+        "Existing alpha=5.0 results remain untouched."
     )
 
 
     # --------------------------------------------------------
-    # Safety check
+    # Safety checks
     # --------------------------------------------------------
 
     check_training_script()
@@ -727,8 +684,7 @@ def main():
     for subgroup_name in SUBGROUPS:
 
         subgroup_root = (
-            SENSITIVITY_ROOT
-            /
+            SENSITIVITY_ROOT /
             f"alpha_{subgroup_name}"
         )
 
@@ -749,8 +705,7 @@ def main():
             )
 
             output_dir = (
-                subgroup_root
-                /
+                subgroup_root /
                 f"alpha_{alpha_string}_results"
             )
 
@@ -786,8 +741,7 @@ def main():
         )
 
         summary_path = (
-            SENSITIVITY_ROOT
-            /
+            SENSITIVITY_ROOT /
             "alpha_sensitivity_summary.csv"
         )
 
@@ -800,10 +754,8 @@ def main():
 
             print("\n")
             print("!" * 70)
-
-            print(
-                "SUMMARY FILE ALREADY EXISTS"
-            )
+            print("SUMMARY FILE ALREADY EXISTS")
+            print("!" * 70)
 
             print(
                 f"{summary_path}"
@@ -842,11 +794,7 @@ def main():
 
     print("\n")
     print("#" * 70)
-
-    print(
-        "# ALPHA SENSITIVITY ANALYSIS COMPLETE"
-    )
-
+    print("# ALPHA SENSITIVITY ANALYSIS COMPLETE")
     print("#" * 70)
 
     print(
