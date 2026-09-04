@@ -1,0 +1,10 @@
+FEDERATED TRAINING CONVERGENCE
+===============================
+Subgroup: 5_18
+Total rounds completed: 11
+Maximum rounds: 50
+Best round: 6
+Best global validation RMSE: 0.084712
+Stopped at round: 11
+Patience: 5
+Stopping reason: Early stopping triggered after 5 rounds without validation improvement.

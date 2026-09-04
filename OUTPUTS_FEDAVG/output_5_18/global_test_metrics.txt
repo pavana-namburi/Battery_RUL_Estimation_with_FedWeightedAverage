@@ -1,0 +1,7 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Subgroup: 5_18
+MAE: 0.072867
+RMSE: 0.081630
+Best round: 6
+Best validation RMSE: 0.084712
