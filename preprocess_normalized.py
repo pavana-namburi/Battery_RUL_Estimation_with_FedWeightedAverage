@@ -40,7 +40,7 @@ import pickle
 # PATHS
 # ============================================================
 
-BASE_PATH = Path(r"D:\reproducing_FL")
+BASE_PATH = Path(__file__).resolve().parent
 
 RAW_DATA_DIR = BASE_PATH / "data-splits"
 OUTPUT_ROOT = BASE_PATH / "processed_data"

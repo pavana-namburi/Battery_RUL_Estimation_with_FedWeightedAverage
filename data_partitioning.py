@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore")
 # ==================================================
 # CONFIG
 # ==================================================
-BASE_DIR = r"D:\reproducing_FL"
+BASE_DIR = Path(__file__).resolve().parent
 
 CSV_DIR = os.path.join(BASE_DIR, "data")
 OUTPUT_ROOT = os.path.join(BASE_DIR, "data_splits")

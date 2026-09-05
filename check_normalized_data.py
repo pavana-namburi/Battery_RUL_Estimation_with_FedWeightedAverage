@@ -58,7 +58,7 @@ import pickle
 # PATH CONFIGURATION
 # ============================================================
 
-BASE_PATH = Path(r"D:\reproducing_FL")
+BASE_PATH = Path(__file__).resolve().parent
 
 PROCESSED_ROOT = (
     BASE_PATH / "processed_data"
