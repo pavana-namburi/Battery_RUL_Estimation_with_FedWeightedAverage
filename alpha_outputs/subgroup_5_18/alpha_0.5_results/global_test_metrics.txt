@@ -1,0 +1,9 @@
+FINAL GLOBAL TEST RESULTS
+=========================
+Subgroup: 5_18
+Global test battery: B0018
+FedWeightedAvg Alpha: 0.5
+MAE: 0.072661
+RMSE: 0.080425
+Best round: 28
+Best validation RMSE: 0.071548
