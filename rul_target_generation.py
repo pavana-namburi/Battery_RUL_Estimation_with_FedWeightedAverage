@@ -125,8 +125,8 @@ def main():
         "B0028"
     ]
 
-    input_dir = Path("./raw data")
-    output_dir = r"D:\reproducing_FL\data"
+    input_dir = Path(__file__).resolve().parent / "raw data"
+    output_dir = Path(__file__).resolve().parent / "data"
 
     print("\nNASA PCoE Battery Preprocessing")
     print(f"Input  : {input_dir.resolve()}")

@@ -37,6 +37,7 @@
 import os
 import copy
 import random
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -92,7 +93,7 @@ print("=" * 70)
 # 3. PATHS
 # ============================================================
 
-BASE_DIR = r"D:\reproducing_FL"
+BASE_DIR = Path(__file__).resolve().parent
 
 PROCESSED_ROOT = os.path.join(
     BASE_DIR,
