@@ -125,7 +125,7 @@ def main():
         "B0028"
     ]
 
-    input_dir = Path("./raw data")
+    input_dir = Path("./raw-data")
     output_dir = r"D:\reproducing_FL\data"
 
     print("\nNASA PCoE Battery Preprocessing")
